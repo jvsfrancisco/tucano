@@ -137,14 +137,14 @@ export class Runner {
   // Saves the human message and decides who answers it: mentioned agents
   // first, then whoever asked a pending question, then the DM agent or the
   // only agent in the channel, and otherwise the router.
-  async send(conversationId: string, text: string, images: ImageUpload[] = []): Promise<void> {
+  async send(conversationId: string, text: string, images: ImageUpload[] = [], user?: string): Promise<void> {
     const { db, emit } = this.deps
     const conv = db.conversation(conversationId)
     const body = text.trim()
     const pictures = this.deps.dataDir ? images.filter((i) => IMAGE_MIMES.includes(i.mime)).slice(0, MAX_IMAGES_PER_MESSAGE) : []
     if (!conv || (!body && pictures.length === 0)) return
 
-    const mine: Message = { id: randomUUID(), conversationId, author: { kind: 'me' }, text: body, at: Date.now() }
+    const mine: Message = { id: randomUUID(), conversationId, author: user ? { kind: 'me', user } : { kind: 'me' }, text: body, at: Date.now() }
     for (const img of pictures) this.keepImage(mine, img)
     db.saveMessage(mine)
     emit({ type: 'message', message: mine })
@@ -478,6 +478,10 @@ export class Runner {
     // What this reply counts toward: given (a chain, a routine's issue), or an issue named in the message it answers.
     const asked = [...history].reverse().find((m) => m.author.kind === 'me' || m.author.kind === 'routine')
     const work = opts.work ?? opts.existing?.run?.work ?? (asked ? workIn(asked.text) : undefined)
+    // With several people in the workspace (the server's sign-in), this reply is for whoever wrote last.
+    const people = [...new Set(history.flatMap((m) => (m.author.kind === 'me' && m.author.user ? [m.author.user] : [])))]
+    const askedBy = asked?.author.kind === 'me' ? asked.author.user : undefined
+    const talking = askedBy ? { ...settings, workspaceName: askedBy } : settings
     const canRemember = !!memory && !!this.deps.gateway && agent.memory !== 'read'
     // Past the prompt's budget, the older memories are searched instead: the tool shows up only then.
     const promptMemories = memory?.forPrompt(agent)
@@ -929,7 +933,7 @@ export class Runner {
           return textResult(
             L(
               `Você chegou no teto de gasto desta resposta (${tokenCount(budget)} tokens). Não chame mais ferramentas: escreva em poucas linhas o que já fez, o que descobriu e o que falta, e encerre. Se ${settings.workspaceName} mandar continuar, você segue de onde parou.`,
-              `You reached this reply's spending cap (${tokenCount(budget)} tokens). Don't call any more tools: write in a few lines what you did, what you found and what's left, and end. If ${settings.workspaceName} says to go on, you pick up where you left off.`
+              `You reached this reply's spending cap (${tokenCount(budget)} tokens). Don't call any more tools: write in a few lines what you did, what you found and what's left, and end. If ${talking.workspaceName} says to go on, you pick up where you left off.`
             ),
             true
           )
@@ -968,7 +972,7 @@ export class Runner {
     const attached = this.deps.dataDir ? db.artifacts().filter((a) => a.agentId === '' && a.kind === 'image' && a.conversationId === conv.id && ids.has(a.messageId)) : []
     const names = new Map<string, string[]>()
     for (const a of attached) names.set(a.messageId, [...(names.get(a.messageId) ?? []), a.name])
-    const { blocks, blockOf } = transcriptBlocks({ agent, conversation: conv, messages: history, agents: db.agents(), me: settings.workspaceName, task: opts.task, summary, images: names })
+    const { blocks, blockOf } = transcriptBlocks({ agent, conversation: conv, messages: history, agents: db.agents(), me: talking.workspaceName, task: opts.task, summary, images: names })
     const images: TurnImage[] = attached
       .slice(-MAX_TURN_IMAGES)
       .flatMap((a) => (blockOf.has(a.messageId) ? [{ block: blockOf.get(a.messageId)!, path: join(this.deps.dataDir!, 'artifacts', a.id, a.name), mime: mimeOf(a.name) }] : []))
@@ -978,7 +982,8 @@ export class Runner {
         effort: agent.effort,
         system: systemPrompt({
           agent,
-          settings,
+          settings: talking,
+          people,
           conversation: conv,
           peers,
           memories: promptMemories,

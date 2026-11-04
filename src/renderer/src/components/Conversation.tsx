@@ -35,6 +35,7 @@ import {
   type Step,
   IMAGE_MIMES,
   MAX_IMAGES_PER_MESSAGE,
+  initials,
   isTeam
 } from '../store'
 import { AgentAvatar, Icon, MeAvatar, duration, time, tokens, usd } from './ui'
@@ -172,6 +173,7 @@ export function MessageList({ messages, conversationId, empty, focus }: { messag
           !!prev &&
           prev.author.kind === m.author.kind &&
           (m.author.kind !== 'agent' || (prev.author.kind === 'agent' && prev.author.id === m.author.id)) &&
+          (m.author.kind !== 'me' || (prev.author.kind === 'me' && prev.author.user === m.author.user)) &&
           m.at - prev.at < 5 * 60_000 &&
           !m.run &&
           m.author.kind !== 'system' &&
@@ -207,11 +209,15 @@ function MessageRow({ message, grouped }: { message: Message; grouped: boolean }
 
   if (message.author.kind === 'routine') return <RoutineMessage message={message} />
 
-  const name = agent ? agent.name : me.name
+  // With several people in the workspace each message carries who wrote it.
+  const person = message.author.kind === 'me' ? message.author.user : undefined
+  // Another person's message sits on the left with a name, like an agent's; mine is the bubble on the right.
+  const other = !!person && person.toLowerCase() !== me.name.toLowerCase()
+  const name = agent ? agent.name : (person ?? me.name)
   return (
-    <article className={`msg ${agent ? 'msg--agent' : 'msg--me'} ${grouped ? 'msg--grouped' : ''}`}>
+    <article className={`msg ${agent || other ? 'msg--agent' : 'msg--me'} ${grouped ? 'msg--grouped' : ''}`}>
       <div className="msg__gutter">
-        {!grouped && (agent ? <AgentAvatar agent={agent} size={34} busy={message.run?.status === 'working'} /> : <MeAvatar initials={me.initials} size={34} />)}
+        {!grouped && (agent ? <AgentAvatar agent={agent} size={34} busy={message.run?.status === 'working'} /> : <MeAvatar initials={person ? initials(person) : me.initials} size={34} />)}
       </div>
       <div className="msg__body">
         {!grouped && (

@@ -170,7 +170,8 @@ export interface AgentDraft {
   agentId?: string // once created
 }
 
-export type Author = { kind: 'me' } | { kind: 'agent'; id: string } | { kind: 'system' } | { kind: 'routine'; id: string }
+// `me` is a person: `user` names which one when several share the workspace (the server's sign-in).
+export type Author = { kind: 'me'; user?: string } | { kind: 'agent'; id: string } | { kind: 'system' } | { kind: 'routine'; id: string }
 
 export interface Message {
   id: string

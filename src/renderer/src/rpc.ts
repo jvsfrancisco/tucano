@@ -53,13 +53,19 @@ export function installWebHost(): void {
 }
 
 let sid = ''
+let signedIn: string | undefined
+
+// Who is signed in at this page (the server tells); the desktop app has no sign-in.
+export const viewer = (): string | undefined => signedIn
 
 function connectWeb(onEvent: (e: CoreEvent) => void): Promise<void> {
   return new Promise((resolve) => {
     let first = true
     const es = new EventSource('/api/events')
     es.addEventListener('hello', (m) => {
-      sid = (JSON.parse((m as MessageEvent<string>).data) as { sid: string }).sid
+      const hello = JSON.parse((m as MessageEvent<string>).data) as { sid: string; user?: string }
+      sid = hello.sid
+      signedIn = hello.user
       if (first) {
         first = false
         resolve()

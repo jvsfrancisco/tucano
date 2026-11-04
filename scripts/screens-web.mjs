@@ -17,6 +17,26 @@ delete env.CODEX_HOME
 delete env.CLAUDE_CONFIG_DIR
 
 spawnSync('node', ['out/main/server.js', 'user', 'add', 'João'], { cwd: repo, env })
+spawnSync('node', ['out/main/server.js', 'user', 'add', 'Cauã'], { cwd: repo, env })
+
+// The second person, over HTTP like their own page: signs in, opens a stream and sends to a channel.
+async function sendAs(name, text) {
+  const base = `http://127.0.0.1:${port}`
+  const login = await fetch(`${base}/login`, { method: 'POST', redirect: 'manual', body: new URLSearchParams({ name, password: 'senha-do-joao' }) })
+  const cookie = login.headers.get('set-cookie').split(';')[0]
+  const ctl = new AbortController()
+  const ev = await fetch(`${base}/api/events`, { headers: { cookie }, signal: ctl.signal })
+  const reader = ev.body.getReader()
+  let first = ''
+  while (!first.includes('"sid"')) first += new TextDecoder().decode((await reader.read()).value)
+  const sid = /"sid":"([^"]+)"/.exec(first)[1]
+  const headers = { cookie, 'x-tucano': '1', 'content-type': 'application/json' }
+  const call = async (id, method, params) => (await fetch(`${base}/api/call?sid=${sid}`, { method: 'POST', headers, body: JSON.stringify({ id, method, params }) })).json()
+  const snap = (await call(1, 'snapshot')).result
+  const channel = snap.conversations.find((c) => c.name === 'engenharia')
+  await call(2, 'sendMessage', { conversationId: channel.id, text })
+  ctl.abort()
+}
 const server = spawn('node', ['out/main/server.js'], { cwd: repo, env })
 let log = ''
 server.stdout.on('data', (d) => (log += d))
@@ -55,9 +75,17 @@ try {
   await page.waitForTimeout(1500) // the fake engine answers
   await page.screenshot({ path: join(out, 'web-after-send.png') })
 
-  // A reload keeps the session and shows the same message again (the core kept it).
+  // A second person writes in the same channel: the first sees it live, under that person's name.
+  await sendAs('Cauã', 'mensagem do caua')
+  await page.getByText('mensagem do caua').first().waitFor({ timeout: 10000 })
+  await page.locator('.msg__author', { hasText: 'Cauã' }).first().waitFor({ timeout: 5000 })
+  await page.waitForTimeout(1500)
+  await page.screenshot({ path: join(out, 'web-two-people.png') })
+
+  // A reload keeps the session and shows the same messages again (the core kept them).
   await page.reload()
   await page.getByText(text).first().waitFor({ timeout: 15000 })
+  await page.locator('.msg__author', { hasText: 'Cauã' }).first().waitFor({ timeout: 5000 })
   if (problems.length) {
     failed = true
     console.error(problems.join('\n'))

@@ -432,7 +432,7 @@ export class Db {
   private toMessage(r: Row): Message {
     const kind = str(r['author_kind'])
     const author: Author =
-      kind === 'agent' || kind === 'routine' ? { kind, id: str(r['author_id']) } : kind === 'system' ? { kind: 'system' } : { kind: 'me' }
+      kind === 'agent' || kind === 'routine' ? { kind, id: str(r['author_id']) } : kind === 'system' ? { kind: 'system' } : r['author_id'] ? { kind: 'me', user: str(r['author_id']) } : { kind: 'me' }
     return {
       id: str(r['id']),
       conversationId: str(r['conversation_id']),
@@ -479,7 +479,7 @@ export class Db {
         m.id,
         m.conversationId,
         m.author.kind,
-        'id' in m.author ? m.author.id : null,
+        'id' in m.author ? m.author.id : m.author.kind === 'me' ? (m.author.user ?? null) : null,
         m.text,
         m.at,
         m.run ? JSON.stringify(m.run) : null,

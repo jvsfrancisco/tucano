@@ -8,6 +8,7 @@ import { join } from 'node:path'
 
 // A client's end of the line: an Electron MessagePort, or an HTTP session in the server.
 export interface Port {
+  user?: string // who is on this line, when sign-in tells (the server); the desktop window is just its owner
   postMessage(message: unknown): void
   on(event: 'message', cb: (m: { data: unknown }) => void): unknown
   on(event: 'close', cb: () => void): unknown

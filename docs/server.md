@@ -34,10 +34,21 @@ Variáveis: `TUCANO_DATA` (pasta de dados, padrão `~/.tucano-server`), `TUCANO_
 - Quem entra comanda agentes que rodam comandos nesta máquina e usam as contas de IA dela. Só crie
   usuários de quem você daria um terminal.
 
+## Duas pessoas no mesmo espaço
+
+- Cada mensagem guarda quem a escreveu (`author: { kind: 'me', user }`, no `author_id` que já existia:
+  sem migração). Mensagens antigas e as do app de mesa ficam sem `user`.
+- Na tela, a sua mensagem é a bolha à direita; a de outra pessoa aparece à esquerda, com avatar e nome.
+- O agente vê cada mensagem com o nome de quem escreveu, é avisado de que há mais de uma pessoa e
+  responde a quem falou por último (o "você" do prompt passa a ser essa pessoa).
+- Memória, agentes, canais e conexões de IA continuam **compartilhados**: é o ponto. A memória "Sobre
+  você" é uma só para os dois.
+
 ## O que ainda não existe
 
-- **Autoria por pessoa**: as mensagens ainda não registram quem escreveu. O "eu" do app é o nome do
-  workspace (por padrão, o usuário do sistema). Os dois entram no mesmo espaço como a mesma pessoa.
+- Aprovações e rotinas não dizem quem decidiu ou quem criou: valem para o espaço todo, e o texto de
+  "aprovou" ainda usa o nome do workspace. O nome do workspace na barra lateral é o do usuário do
+  sistema (troque em Configurações).
 - Navegador dos agentes: só com Google Chrome instalado (`ChromeBrowsers`). Sem ele, o agente recebe um
   erro claro. Capturar página (`screenshot`) precisa do app de mesa.
 - Escolher pasta do disco: no navegador é um campo de texto com o caminho no servidor.

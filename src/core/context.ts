@@ -10,6 +10,7 @@ export const HISTORY_LIMIT = 30
 export function systemPrompt(opts: {
   agent: Agent
   settings: Pick<Settings, 'workspaceName' | 'context'>
+  people?: string[] // the people who wrote in this conversation, when there is more than one
   conversation: Conversation
   peers: Agent[]
   memories?: { aboutMe: Memory[]; own: Memory[]; searchable?: number }
@@ -24,7 +25,7 @@ export function systemPrompt(opts: {
   publish?: string[] // the GitHub repositories it can push agent/* branches to
   builder?: string // the Tuca's view of the workspace: models, connectors, the team
 }): string {
-  const { agent, settings, conversation, peers, memories, canRemember, hasComputer, macFolder, offline, web, browser, routines, skills, publish, builder } = opts
+  const { agent, settings, people, conversation, peers, memories, canRemember, hasComputer, macFolder, offline, web, browser, routines, skills, publish, builder } = opts
   const me = settings.workspaceName || L('o usuário', 'the user')
   const where =
     conversation.kind === 'dm'
@@ -36,6 +37,12 @@ export function systemPrompt(opts: {
       `Você é ${agent.name} (@${agent.handle}), um agente de IA no Tucano, um app de chat onde ${me} conversa com um time de agentes em canais e DMs.`,
       `You are ${agent.name} (@${agent.handle}), an AI agent in Tucano, a chat app where ${me} talks with a team of agents in channels and DMs.`
     ),
+    people &&
+      people.length > 1 &&
+      L(
+        `Mais de uma pessoa usa este espaço (${people.join(', ')}). Cada mensagem vem com o nome de quem a escreveu: responda a quem falou com você agora (${me}) e não atribua a uma pessoa o que outra disse.`,
+        `More than one person uses this workspace (${people.join(', ')}). Each message carries the name of who wrote it: answer whoever spoke to you just now (${me}) and don't attribute to one person what another said.`
+      ),
     agent.role && L(`Seu papel: ${agent.role}.`, `Your role: ${agent.role}.`),
     settings.context.trim() && `## ${L('Sobre', 'About')} ${me}\n${settings.context.trim()}`,
     agent.instructions.trim() && `## ${L('Suas instruções', 'Your instructions')}\n${agent.instructions.trim()}`,
@@ -239,7 +246,7 @@ export function transcript(opts: TranscriptOpts): string[] {
 export function transcriptBlocks(opts: TranscriptOpts): { blocks: string[]; blockOf: Map<string, number> } {
   const { agent, conversation, messages, agents, me, task, summary, images } = opts
   const name = (m: Message): string | null => {
-    if (m.author.kind === 'me') return me
+    if (m.author.kind === 'me') return m.author.user ?? me
     if (m.author.kind === 'system') return null
     if (m.author.kind === 'routine') return L(`Rotina "${m.routine?.name ?? 'apagada'}", agendada por ${me}`, `Routine "${m.routine?.name ?? 'deleted'}", scheduled by ${me}`)
     const id = m.author.id

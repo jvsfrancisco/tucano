@@ -20,10 +20,15 @@ export interface Snapshot {
   demoServer?: { command: string; args: string[] } // the bundled demo connector, when available
 }
 
+// Who is calling, for what depends on the person (the server signs people in; the desktop app has one).
+export interface CallContext {
+  user?: string
+}
+
 export interface Api {
   snapshot(): Snapshot
   artifactText(p: { id: string }): string | null // a text file an agent showed (Markdown, CSV, code), for the side panel
-  sendMessage(p: { conversationId: string; text: string; images?: ImageUpload[] }): void
+  sendMessage(p: { conversationId: string; text: string; images?: ImageUpload[] }, ctx?: CallContext): void
   stopRun(p: { messageId: string }): void
   retryRun(p: { messageId: string }): void
   continueRun(p: { messageId: string }): void // a reply paused at its budget goes on

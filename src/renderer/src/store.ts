@@ -35,7 +35,7 @@ import {
   type ImageUpload,
   type Os
 } from '../../shared/types'
-import { call, connect, installWebHost, onReconnect } from './rpc'
+import { call, connect, installWebHost, onReconnect, viewer } from './rpc'
 
 export * from '../../shared/types'
 
@@ -82,7 +82,7 @@ export type Dialog = { kind: 'members' | 'rename' | 'topic'; id: string } | { ki
 
 export type Panel = { kind: 'artifact'; id: string } | { kind: 'service'; agentId: string; name: string } | { kind: 'browser'; agentId: string }
 
-const initials = (name: string): string =>
+export const initials = (name: string): string =>
   name
     .split(/\s+/)
     .filter(Boolean)
@@ -173,7 +173,8 @@ const upsert = <T extends { id: string }>(list: T[], item: T): T[] =>
 
 function withSettings(s: State, settings: Settings): State {
   setLang(settings.language)
-  const name = settings.workspaceName || L('Eu', 'Me')
+  // At the server, "me" is whoever signed in; in the app, the workspace's name.
+  const name = viewer() || settings.workspaceName || L('Eu', 'Me')
   return { ...s, settings, me: { name, initials: initials(name) } }
 }
 

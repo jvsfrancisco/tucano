@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { parent, type Port } from './host'
 import { L, langOf, locale, setLang, type Lang } from '../shared/lang'
-import type { Api, CoreEvent, Method, Request, Wire } from '../shared/rpc'
+import type { Api, CallContext, CoreEvent, Method, Request, Wire } from '../shared/rpc'
 import { channelName, ENGINES, inQuietHours, modelInfo, WEBHOOK_PORT, type Agent, type BrowserReply, type Message, type EngineId, type EngineStatus, type Settings } from '../shared/types'
 import { listModels, quietClaude, quietCodex, withChoice } from './harness'
 import { Db } from './db'
@@ -500,8 +500,8 @@ const api: Api = {
     demoServer: existsSync(demoPath) ? { command: 'node', args: [demoPath] } : undefined
   }),
 
-  sendMessage: ({ conversationId, text, images }) => {
-    void runner.send(conversationId, text, images)
+  sendMessage: ({ conversationId, text, images }, ctx) => {
+    void runner.send(conversationId, text, images, ctx?.user)
   },
 
   stopRun: ({ messageId }) => runner.stop(messageId),
@@ -811,10 +811,10 @@ const api: Api = {
 
 function handle(port: Port, req: Request): void {
   const reply = (r: Omit<Extract<Wire, { id: number }>, 'id'>): void => port.postMessage({ id: req.id, ...r } satisfies Wire)
-  const fn = api[req.method as Method] as ((p: unknown) => unknown) | undefined
+  const fn = api[req.method as Method] as ((p: unknown, ctx: CallContext) => unknown) | undefined
   if (!fn) return reply({ error: `unknown method ${req.method}` })
   Promise.resolve()
-    .then(() => fn(req.params))
+    .then(() => fn(req.params, { user: port.user }))
     .then(
       (result) => reply({ result }),
       (e: unknown) => {
