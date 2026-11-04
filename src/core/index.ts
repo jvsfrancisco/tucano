@@ -14,9 +14,11 @@ import { listModels, quietClaude, quietCodex, withChoice } from './harness'
 import { Db } from './db'
 import { claudeEngine, userProvider } from './engines/claude'
 import { codexEngine, userCodexProvider } from './engines/codex'
+import { geminiEngine } from './engines/gemini'
+import { AiConnections, connectionEnv, selectedConnection } from './ai-connections'
 import { opencodeEngine } from './engines/opencode'
 import { piEngine } from './engines/pi'
-import { adoptLoginShellPath, detectEngines } from './engines/detect'
+import { adoptLoginShellPath, detectEngines, detectClaude, detectCodex } from './engines/detect'
 import { fakeEngine } from './engines/fake'
 import type { Engine } from './engines/types'
 import { ConnectorManager } from './connectors'
@@ -49,6 +51,8 @@ mkdirSync(dataDir, { recursive: true })
 
 const db = new Db(join(dataDir, 'tucano.db'))
 const codexHome = join(dataDir, 'codex-home')
+const aiConnections = new AiConnections(db, dataDir)
+let connectionStatuses: Record<string, EngineStatus> = {}
 mkdirSync(join(codexHome, '.codex'), { recursive: true })
 // Until the settings are read, the language of a new install: the Mac's.
 setLang(langOf(process.env['TUCANO_LOCALE']))
@@ -75,16 +79,22 @@ const DEFAULTS: Omit<Settings, 'engines'> = {
 }
 
 const unknownEngine: EngineStatus = { installed: false, loggedIn: false }
-let engines: Record<EngineId, EngineStatus> = { claude: unknownEngine, codex: unknownEngine, opencode: unknownEngine, pi: unknownEngine }
+let engines: Record<EngineId, EngineStatus> = { claude: unknownEngine, codex: unknownEngine, opencode: unknownEngine, pi: unknownEngine, gemini: unknownEngine }
 // The models OpenCode and Pi list (what the person has logins for), from the last check.
 let listed: Partial<Record<EngineId, string[]>> = {}
 
 const fakeStatus = (v: string): EngineStatus => ({ installed: true, loggedIn: true, path: 'fake', version: v, account: L('Motor de teste', 'Test engine'), route: 'plan' })
 async function detect(): Promise<void> {
   if (fake) {
-    engines = { claude: fakeStatus('0.0.0'), codex: fakeStatus('0.0.0'), opencode: { ...fakeStatus('0.0.0'), route: 'providers', account: 'OpenAI, OpenCode · 3 modelos' }, pi: { installed: false, loggedIn: false } }
+    engines = { claude: fakeStatus('0.0.0'), codex: fakeStatus('0.0.0'), opencode: { ...fakeStatus('0.0.0'), route: 'providers', account: 'OpenAI, OpenCode · 3 modelos' }, pi: { installed: false, loggedIn: false }, gemini: fakeStatus('0.0.0') }
     listed = { opencode: ['openai/gpt-5.5', 'opencode/big-pickle', 'opencode-go/qwen3.8-max'] }
   } else ({ engines, listed } = await detectEngines(codexHome))
+  connectionStatuses = Object.fromEntries(await Promise.all(aiConnections.list().map(async (c) => {
+    const home = aiConnections.home(c.id)
+    const env = connectionEnv(c.engine, home)
+    const status = fake ? fakeStatus('0.0.0') : c.engine === 'claude' ? await detectClaude(env) : await detectCodex(home, env, join(home, '.codex'))
+    return [c.id, status]
+  })))
   gatewayLists.clear()
   emit({ type: 'settings', settings: settings() })
 }
@@ -94,19 +104,29 @@ const ready = Promise.all([gateway.start(), (fake ? Promise.resolve() : adoptLog
 const settings = (): Settings => {
   const s = db.getSettings(DEFAULTS)
   setLang(s.language)
-  return { ...s, engines: withChoice(engines, s.harnesses), jevKey: db.getSecret(JEV_SECRET) !== undefined, telegram: telegram?.info(), github: githubInfo() }
+  return { ...s, connectionStatuses, engines: withChoice(engines, s.harnesses), jevKey: db.getSecret(JEV_SECRET) !== undefined, telegram: telegram?.info(), github: githubInfo() }
 }
 // github is made further down; settings can be asked for before.
 const githubInfo = (): Settings['github'] => githubRef?.info()
 
 const engineImpls: Record<EngineId, Engine> = fake
-  ? { claude: fakeEngine('claude'), codex: fakeEngine('codex'), opencode: fakeEngine('opencode'), pi: fakeEngine('pi') }
+  ? { claude: fakeEngine('claude'), codex: fakeEngine('codex'), opencode: fakeEngine('opencode'), pi: fakeEngine('pi'), gemini: fakeEngine('gemini') }
   : {
       claude: claudeEngine(() => engines.claude.path, async () => quietClaude(userProvider())),
       codex: codexEngine(() => engines.codex.path, codexHome, loginEnv, async () => quietCodex(userCodexProvider())),
       opencode: opencodeEngine(() => engines.opencode.path, join(dataDir, 'opencode-home'), loginEnv, () => engines.opencode.version),
-      pi: piEngine(() => engines.pi.path, join(dataDir, 'pi'), loginEnv)
+      pi: piEngine(() => engines.pi.path, join(dataDir, 'pi'), loginEnv),
+      gemini: geminiEngine(() => engines.gemini.path)
     }
+
+function engineFor(engine: EngineId, connectionId?: string): Engine {
+  const c = selectedConnection(aiConnections.list(), connectionId, engine)
+  if (!c || fake) return engineImpls[engine]
+  const home = aiConnections.home(c.id)
+  const env = connectionEnv(c.engine, home)
+  if (c.engine === 'claude') return claudeEngine(() => engines.claude.path, async () => quietClaude(userProvider(join(home, '.claude'))), env)
+  return codexEngine(() => engines.codex.path, home, async () => ({}), async () => quietCodex(userCodexProvider(join(home, '.codex'))), env)
+}
 
 // A command in the login shell, where SSO tools live; what it prints, trimmed.
 // Windows has no login shell: the same shell agents' commands use (Git Bash, or cmd.exe).
@@ -291,6 +311,7 @@ const skills = new Skills({ db, emit, notify: (title, body) => notifyAll(title, 
 const runner = new Runner({
   db,
   engines: engineImpls,
+  engineFor,
   settings: () => ready.then(settings),
   emit,
   workDir: join(dataDir, 'agents'),
@@ -491,6 +512,8 @@ const api: Api = {
   continueRun: ({ messageId }) => void runner.continue(messageId),
 
   saveAgent: ({ agent, channelIds }) => {
+    const model = modelInfo(agent.modelId)
+    if (agent.connectionId) selectedConnection(aiConnections.list(), agent.connectionId, model?.engine ?? 'claude')
     const before = db.agent(agent.id)
     // Archived changes only through archiveAgent, which also stops what the agent was doing.
     const clean: Agent = { ...agent, name: agent.name.trim(), handle: agent.handle.trim().toLowerCase(), archived: before?.archived ?? false }
@@ -653,9 +676,10 @@ const api: Api = {
   },
 
   // A real question through the chosen engine and model: what fails here would fail every reply.
-  testEngine: async ({ model }) => {
+  testEngine: async ({ model, connectionId }) => {
     const m = modelInfo(model)
     if (!m?.id) return { ok: false, message: L('Escolha um modelo pra testar.', 'Pick a model to test.') }
+    const impl = engineFor(m.engine, connectionId)
     const st = settings().engines[m.engine]
     if (!st.installed) return { ok: false, message: L(`O ${ENGINES[m.engine].label} não está instalado.`, `${ENGINES[m.engine].label} isn't installed.`) }
     const cwd = join(dataDir, 'teste')
@@ -663,7 +687,7 @@ const api: Api = {
     const started = Date.now()
     let text = ''
     let error: string | undefined
-    for await (const ev of engineImpls[m.engine].run({ model: m.id, effort: 'low', system: L('Responda só com a palavra pronto.', 'Reply only with the word ready.'), prompt: L('Teste de conexão.', 'Connection test.'), cwd, signal: AbortSignal.timeout(90_000) })) {
+    for await (const ev of impl.run({ model: m.id, effort: 'low', system: L('Responda só com a palavra pronto.', 'Reply only with the word ready.'), prompt: L('Teste de conexão.', 'Connection test.'), cwd, signal: AbortSignal.timeout(90_000) })) {
       if (ev.type === 'text') text += ev.delta
       else if (ev.type === 'done') text = ev.text || text
       else if (ev.type === 'error') error = ev.message
@@ -673,7 +697,7 @@ const api: Api = {
     return { ok: true, message: L(`${m.id} respondeu em ${secs} s: “${text.trim().slice(0, 60)}”`, `${m.id} answered in ${secs} s: “${text.trim().slice(0, 60)}”`) }
   },
 
-  updateSettings: ({ patch: { jevKey: _computed, telegram: _phone, ...patch } }) => {
+  updateSettings: ({ patch: { jevKey: _computed, telegram: _phone, aiConnections: _connections, connectionStatuses: _statuses, ...patch } }) => {
     db.setSettings(patch)
     if (patch.paused !== undefined) runner.setPaused(patch.paused)
     if (patch.openAtLogin !== undefined) toMain({ type: 'login_item', open: patch.openAtLogin })
@@ -751,22 +775,37 @@ const api: Api = {
 
   // Login always happens in the CLI's own flow; the app never sees credentials.
   // Codex logs into the app's own home (see codexEnv), separate from the user's.
-  loginEngine: ({ engine }) => {
+  addAiConnection: ({ engine, name }) => {
+    const c = aiConnections.add(engine, name)
+    emit({ type: 'settings', settings: settings() })
+    void detect()
+    return c
+  },
+  removeAiConnection: ({ id }) => {
+    aiConnections.remove(id)
+    delete connectionStatuses[id]
+    emit({ type: 'settings', settings: settings() })
+  },
+  loginEngine: ({ engine, connectionId }) => {
+    const c = selectedConnection(aiConnections.list(), connectionId, engine)
+    const home = c ? aiConnections.home(c.id) : codexHome
+    const loginEnvironment = c ? connectionEnv(c.engine, home) : undefined
     const bin = engines[engine].path ?? ENGINES[engine].cli
     const sub = ENGINES[engine].login.split(' ').slice(1).join(' ')
     if (isWin) {
       // A new console window running a small script: cmd's quoting can't be trusted with paths otherwise.
       const script = join(dataDir, 'login.cmd')
-      const env = engine === 'codex' ? `set "HOME=${codexHome}"\r\nset "CODEX_HOME=${join(codexHome, '.codex')}"\r\n` : ''
+      const env = engine === 'codex' ? `set "HOME=${home}"\r\nset "CODEX_HOME=${join(home, '.codex')}"\r\n` : c ? `set "CLAUDE_CONFIG_DIR=${join(home, '.claude')}"\r\n` : ''
       writeFileSync(script, `@echo off\r\n${env}call "${bin}" ${sub}\r\n`)
-      spawn(process.env['ComSpec'] || 'cmd.exe', ['/d', '/c', 'start', '"Tucano"', 'cmd.exe', '/k', `"${script}"`], { detached: true, stdio: 'ignore', windowsVerbatimArguments: true }).unref()
+      spawn(process.env['ComSpec'] || 'cmd.exe', ['/d', '/c', 'start', '"Tucano"', 'cmd.exe', '/k', `"${script}"`], { detached: true, stdio: 'ignore', windowsVerbatimArguments: true, env: loginEnvironment }).unref()
       return { opened: true, command: `"${bin}" ${sub}` }
     }
     const q = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`
-    const cmd = engine === 'codex' ? `HOME=${q(codexHome)} CODEX_HOME=${q(join(codexHome, '.codex'))} ${q(bin)} ${sub}` : `${q(bin)} ${sub}`
+    const vars = c ? Object.entries(loginEnvironment ?? {}).filter(([key]) => ['HOME', 'CODEX_HOME', 'CLAUDE_CONFIG_DIR'].includes(key)).map(([key, value]) => `${key}=${q(value ?? '')}`).join(' ') : engine === 'codex' ? `HOME=${q(home)} CODEX_HOME=${q(join(home, '.codex'))}` : ''
+    const cmd = `${vars ? `${vars} ` : ''}${q(bin)} ${sub}`
     const term = terminalCommand(cmd, osOf(), onPath)
     // Its own process, so the terminal outlives the app if the person quits it mid-login.
-    if (term) spawn(term.bin, term.args, { detached: true, stdio: 'ignore' }).on('error', () => {}).unref()
+    if (term) spawn(term.bin, term.args, { detached: true, stdio: 'ignore', env: loginEnvironment }).on('error', () => {}).unref()
     return { opened: !!term, command: cmd }
   }
 }

@@ -97,7 +97,7 @@ let state: State = {
   settings: {
     workspaceName: '',
     context: '',
-    engines: { claude: { installed: false, loggedIn: false }, codex: { installed: false, loggedIn: false }, opencode: { installed: false, loggedIn: false }, pi: { installed: false, loggedIn: false } },
+    engines: { claude: { installed: false, loggedIn: false }, codex: { installed: false, loggedIn: false }, opencode: { installed: false, loggedIn: false }, pi: { installed: false, loggedIn: false }, gemini: { installed: false, loggedIn: false } },
     routerModel: 'haiku',
     memoryModel: 'haiku',
     memoryLearning: 'approve',
@@ -309,7 +309,9 @@ export function updateSettings(patch: Partial<Omit<Settings, 'engines'>>): void 
 }
 
 export const refreshEngines = (): void => void call('refreshEngines')
-export const loginEngine = (engine: keyof Settings['engines']): Promise<{ opened: boolean; command: string }> => call('loginEngine', { engine })
+export const loginEngine = (engine: keyof Settings['engines'], connectionId?: string): Promise<{ opened: boolean; command: string }> => call('loginEngine', { engine, connectionId })
+export const addAiConnection = (engine: import('../../shared/types').ConnectionEngine, name: string): Promise<import('../../shared/types').AiConnection> => call('addAiConnection', { engine, name })
+export const removeAiConnection = (id: string): Promise<void> => call('removeAiConnection', { id })
 
 export function saveAgent(agent: Agent, channelIds: string[]): Promise<void> {
   return call('saveAgent', { agent, channelIds })
@@ -419,7 +421,7 @@ export const openExternal = (url: string): void => void call('openExternal', { u
 export const saveRoutine = (routine: RoutineInput): Promise<Routine> => call('saveRoutine', { routine })
 export const setJevKey = (key: string | null): Promise<void> => call('setJevKey', { key })
 export const engineModels = (engine: EngineId): Promise<{ models: string[]; error?: string }> => call('engineModels', { engine })
-export const testEngine = (model: string): Promise<{ ok: boolean; message: string }> => call('testEngine', { model })
+export const testEngine = (model: string, connectionId?: string): Promise<{ ok: boolean; message: string }> => call('testEngine', { model, connectionId })
 export const saveSkill = (skill: SkillInput): Promise<Skill> => call('saveSkill', { skill })
 export const localSkills = (): Promise<LocalSkill[]> => call('localSkills')
 export const linkSkill = (source: string, agents: string[] = []): Promise<Skill> => call('linkSkill', { source, agents })

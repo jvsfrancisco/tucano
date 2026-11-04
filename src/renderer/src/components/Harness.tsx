@@ -42,10 +42,10 @@ export interface ModelOption {
 const lists = new Map<string, Promise<{ models: string[]; error?: string }>>()
 
 // What a harness offers: the app's list on a plan; what OpenCode or Pi list; what the gateway lists.
-export function useEngineModels(engine: EngineId | undefined): { options: ModelOption[]; loading: boolean; error?: string } {
-  const st = useStore((s) => (engine ? s.settings.engines[engine] : undefined))
-  const plan = !!engine && (engine === 'claude' || engine === 'codex') && st?.route !== 'gateway'
-  const id = engine && st?.installed && !plan ? `${engine}|${st.route}|${st.gateway ?? ''}|${st.account ?? ''}` : ''
+export function useEngineModels(engine: EngineId | undefined, connectionId?: string): { options: ModelOption[]; loading: boolean; error?: string } {
+  const st = useStore((s) => connectionId ? s.settings.connectionStatuses?.[connectionId] : engine ? s.settings.engines[engine] : undefined)
+  const plan = !!engine && (engine === 'claude' || engine === 'codex' || engine === 'gemini') && st?.route !== 'gateway'
+  const id = engine && st?.installed && !plan && !connectionId ? `${engine}|${st.route}|${st.gateway ?? ''}|${st.account ?? ''}` : ''
   const [got, setGot] = useState<{ id: string; models: string[]; error?: string } | null>(null)
   useEffect(() => {
     if (!id || !engine) return
@@ -66,20 +66,21 @@ const OTHER = '__outro__'
 
 // A model to run with: the harness, then its model from the list, or another by name.
 // jev adds TypeSafe's Jev (the router). Engines limits the harnesses offered.
-export function ModelPicker({ value, onChange, engines, jev }: { value: string; onChange: (v: string) => void; engines?: EngineId[]; jev?: boolean }): ReactNode {
+export function ModelPicker({ value, onChange, engines, jev, connectionId }: { value: string; onChange: (v: string) => void; engines?: EngineId[]; jev?: boolean; connectionId?: string }): ReactNode {
   const usable = useStore((s) => usableEngines(s.settings))
   const statuses = useStore((s) => s.settings.engines)
-  const choices = (engines ?? usable).filter((e) => usable.includes(e))
+  const connection = useStore((s) => s.settings.aiConnections?.find((c) => c.id === connectionId))
+  const choices = connection ? [connection.engine] : (engines ?? usable).filter((e) => usable.includes(e))
   const m = value && value !== 'jev' ? modelInfo(value) : undefined
   const engine: EngineId | undefined = m && choices.includes(m.engine) ? m.engine : choices[0]
-  const { options, loading, error } = useEngineModels(engine)
+  const { options, loading, error } = useEngineModels(engine, connectionId)
   const inList = options.some((o) => o.value === value)
   const [typing, setTyping] = useState(false)
   const other = value !== 'jev' && !!engine && (typing || (!!m?.id && m.engine === engine && !inList && !loading))
   const name = m && m.engine === engine && !MODELS.some((x) => x.id === value) ? m.id : ''
 
   // A harness's own card passes just that harness: it's already chosen there, so no select.
-  const fixed = engines?.length === 1 && !jev
+  const fixed = (!!connection || engines?.length === 1) && !jev
   if (!engine && !jev) return <p className="hint hint--warn">{L('Nenhum harness pronto. Veja em Configurações → Modelos.', 'No harness ready. See Settings → Models.')}</p>
   return (
     <div className="model-picker">

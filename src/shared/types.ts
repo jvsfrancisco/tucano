@@ -4,7 +4,13 @@ import { L, lang, type Lang } from './lang'
 export type AgentColor = 'sky' | 'indigo' | 'violet' | 'rose' | 'amber' | 'green' | 'teal' | 'graphite'
 export type GrantLevel = 'none' | 'read' | 'read_write'
 export type ToolClass = 'read' | 'write' | 'sensitive'
-export type EngineId = 'claude' | 'codex' | 'opencode' | 'pi'
+export type EngineId = 'claude' | 'codex' | 'opencode' | 'pi' | 'gemini'
+export type ConnectionEngine = 'claude' | 'codex' // Antigravity keeps its login outside HOME: one account per computer
+export interface AiConnection {
+  id: string
+  name: string
+  engine: ConnectionEngine
+}
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh'
 export type MemoryMode = 'auto' | 'approve' | 'read' // how an agent's `lembrar` calls land
 
@@ -57,6 +63,7 @@ export interface Agent {
   color: AgentColor
   instructions: string
   modelId: string
+  connectionId?: string // unset: the installation's default connection for this harness
   effort: Effort
   limit: number // tokens per month
   used: number // tokens used this month, computed from receipts
@@ -176,6 +183,8 @@ export interface Message {
 }
 
 export interface Settings {
+  aiConnections?: AiConnection[] // names only; CLI credentials stay in private directories
+  connectionStatuses?: Record<string, EngineStatus> // computed, never stored
   workspaceName: string
   context: string
   engines: Record<EngineId, EngineStatus>
@@ -285,7 +294,8 @@ export const ENGINES: Record<EngineId, { label: string; cli: string; login: stri
   claude: { label: 'Claude Code', cli: 'claude', login: 'claude auth login', install: 'curl -fsSL https://claude.ai/install.sh | bash', windows: 'irm https://claude.ai/install.ps1 | iex', site: 'https://code.claude.com' },
   codex: { label: 'Codex', cli: 'codex', login: 'codex login', install: 'npm install -g @openai/codex', site: 'https://github.com/openai/codex' },
   opencode: { label: 'OpenCode', cli: 'opencode', login: 'opencode auth login', install: 'curl -fsSL https://opencode.ai/install | bash', windows: 'npm install -g opencode-ai', site: 'https://opencode.ai' },
-  pi: { label: 'Pi', cli: 'pi', login: 'pi', install: 'npm install -g @earendil-works/pi-coding-agent', site: 'https://pi.dev' }
+  pi: { label: 'Pi', cli: 'pi', login: 'pi', install: 'npm install -g @earendil-works/pi-coding-agent', site: 'https://pi.dev' },
+  gemini: { label: 'Antigravity (agy)', cli: 'agy', login: 'agy', install: 'curl -fsSL https://antigravity.google/cli/install.sh | bash', windows: 'irm https://antigravity.google/cli/install.ps1 | iex', site: 'https://antigravity.google/docs/cli' }
 }
 export const ENGINE_IDS = Object.keys(ENGINES) as EngineId[]
 
@@ -309,7 +319,9 @@ export const MODELS: Model[] = [
   model('haiku', 'claude', 'Haiku', 'Rápido, gasta pouco do plano', 'Fast, uses little of the plan'),
   model('gpt-5.6-luna', 'codex', 'GPT-5.6 Luna', 'Bom pra maioria', 'Good for most things'),
   model('gpt-5.6-terra', 'codex', 'GPT-5.6 Terra', 'Problemas difíceis', 'Hard problems'),
-  model('gpt-5.6-sol', 'codex', 'GPT-5.6 Sol', 'O mais capaz, mais lento', 'The most capable, slower')
+  model('gpt-5.6-sol', 'codex', 'GPT-5.6 Sol', 'O mais capaz, mais lento', 'The most capable, slower'),
+  model('gemini-3.8-flash-medium', 'gemini', 'Gemini 3.8 Flash', 'Rápido', 'Fast'),
+  model('gemini-4-argon-high', 'gemini', 'Gemini 4 Argon', 'Tarefas complexas', 'Complex tasks')
 ]
 
 const effort = (id: Effort, pt: string, en: string): { id: Effort; label: string } => ({
@@ -329,7 +341,7 @@ export const usable = (m: Model | undefined): Model | undefined => (m?.id ? m : 
 export const modelInfo = (id: string): Model | undefined => {
   const listed = MODELS.find((m) => m.id === id)
   if (listed) return listed
-  const m = /^(claude|codex|opencode|pi):(.*)$/s.exec(id)
+  const m = /^(claude|codex|opencode|pi|gemini):(.*)$/s.exec(id)
   return m ? { id: m[2]!.trim(), engine: m[1] as EngineId, label: m[2]!.trim(), hint: L('Nome próprio', 'Custom name') } : undefined
 }
 

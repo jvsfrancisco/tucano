@@ -6236,3 +6236,7 @@ kbd {
 .update-note__text a:hover {
   text-decoration: underline;
 }
+.ai-connections__form { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 16px 0; }
+.ai-connections__form .field { flex: 1 1 180px; }
+.ai-connections__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ai-connections > .btn { margin-top: 12px; }

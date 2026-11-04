@@ -218,6 +218,9 @@ const MIGRATIONS = [
   `,
   `
   ALTER TABLE agents ADD COLUMN kind TEXT;
+  `,
+  `
+  ALTER TABLE agents ADD COLUMN connection_id TEXT;
   `
 ]
 
@@ -301,6 +304,7 @@ export class Db {
       color: str(r['color']) as AgentColor,
       instructions: str(r['instructions']),
       modelId: str(r['model']),
+      connectionId: str(r['connection_id']) || undefined,
       effort: str(r['effort']) as Effort,
       limit: Number(r['limit_tokens']),
       used: this.usedThisMonth(str(r['id'])),
@@ -329,14 +333,14 @@ export class Db {
   saveAgent(a: Agent): void {
     this.db
       .prepare(
-        `INSERT INTO agents (id, name, handle, role, color, instructions, model, effort, limit_tokens, grants, memory_mode, computer, computer_kind, web, browser, auto_approve, archived, kind, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO agents (id, name, handle, role, color, instructions, model, effort, limit_tokens, grants, memory_mode, computer, computer_kind, web, browser, auto_approve, archived, kind, created_at, connection_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (id) DO UPDATE SET name = excluded.name, handle = excluded.handle, role = excluded.role,
            color = excluded.color, instructions = excluded.instructions, model = excluded.model, effort = excluded.effort,
            limit_tokens = excluded.limit_tokens, grants = excluded.grants, memory_mode = excluded.memory_mode,
-           computer = excluded.computer, computer_kind = excluded.computer_kind, web = excluded.web, browser = excluded.browser, auto_approve = excluded.auto_approve, archived = excluded.archived, kind = COALESCE(excluded.kind, agents.kind)`
+           computer = excluded.computer, computer_kind = excluded.computer_kind, web = excluded.web, browser = excluded.browser, auto_approve = excluded.auto_approve, archived = excluded.archived, kind = COALESCE(excluded.kind, agents.kind), connection_id = excluded.connection_id`
       )
-      .run(a.id, a.name, a.handle, a.role, a.color, a.instructions, a.modelId, a.effort, a.limit, JSON.stringify(a.grants), a.memory ?? 'auto', a.computer ? 1 : 0, a.computerKind === 'mac' ? 'mac' : 'linux', a.web === false ? 0 : 1, a.browser ? 1 : 0, JSON.stringify(a.autoApprove ?? []), a.archived ? 1 : 0, a.kind ?? null, Date.now())
+      .run(a.id, a.name, a.handle, a.role, a.color, a.instructions, a.modelId, a.effort, a.limit, JSON.stringify(a.grants), a.memory ?? 'auto', a.computer ? 1 : 0, a.computerKind === 'mac' ? 'mac' : 'linux', a.web === false ? 0 : 1, a.browser ? 1 : 0, JSON.stringify(a.autoApprove ?? []), a.archived ? 1 : 0, a.kind ?? null, Date.now(), a.connectionId || null)
   }
 
   // Kept apart from saveAgent: folders change only after the core checks them.

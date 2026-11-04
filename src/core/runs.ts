@@ -19,6 +19,7 @@ import { textResult, type Gateway, type ToolDef } from './gateway'
 import { JEV_MODEL, routeJev } from './jev'
 import { route } from './router'
 import { allowed, approvalHash, canonical } from './policy'
+import { selectedConnection } from './ai-connections'
 
 const MAX_CONCURRENT = 4
 const MAX_TURN_IMAGES = 6 // attached images a reply sees as images; older ones only by name
@@ -55,6 +56,7 @@ export const ASK_USER: ToolDef = {
 export interface RunnerDeps {
   db: Db
   engines: Record<EngineId, Engine>
+  engineFor?: (engine: EngineId, connectionId?: string) => Engine
   settings: () => Promise<Settings> // resolves once engine detection is done
   emit: (e: CoreEvent) => void
   workDir: string // per-agent empty directories live here
@@ -438,14 +440,19 @@ export class Runner {
       return msg
     }
 
-    const status = settings.engines[engineId]
-    if (!status.installed || !status.loggedIn) {
+    let connectionError: string | undefined
+    try { selectedConnection(settings.aiConnections ?? [], agent.connectionId, engineId) }
+    catch (e) { connectionError = e instanceof Error ? e.message : String(e) }
+    const status = agent.connectionId
+      ? settings.connectionStatuses?.[agent.connectionId] ?? { installed: settings.engines[engineId].installed, loggedIn: false }
+      : settings.engines[engineId]
+    if (connectionError || !status.installed || !status.loggedIn || settings.engines[engineId].off) {
       save({
         run: {
           status: 'failed',
           depth: opts.depth,
           steps: [],
-          error: L(
+          error: connectionError ?? L(
             `O ${ENGINES[engineId].label} ${status.installed ? 'não está logado' : 'não está instalado'}. Resolva em Configurações e mande de novo.`,
             `${ENGINES[engineId].label} ${status.installed ? "isn't signed in" : "isn't installed"}. Fix it in Settings and send it again.`
           )
@@ -966,7 +973,7 @@ export class Runner {
       .slice(-MAX_TURN_IMAGES)
       .flatMap((a) => (blockOf.has(a.messageId) ? [{ block: blockOf.get(a.messageId)!, path: join(this.deps.dataDir!, 'artifacts', a.id, a.name), mime: mimeOf(a.name) }] : []))
     try {
-      const events = engines[engineId].run({
+      const events = (this.deps.engineFor?.(engineId, agent.connectionId) ?? engines[engineId]).run({
         model: model?.id ?? agent.modelId,
         effort: agent.effort,
         system: systemPrompt({

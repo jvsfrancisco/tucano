@@ -10,8 +10,8 @@ import { L } from '../../shared/lang'
 // Codex reads AGENTS.md, skills, plugins and memories from the user's home no
 // matter which flags are passed, so Tucano runs it with a home of its
 // own. The user logs into Codex once more, for the app, through Codex itself.
-export function codexEnv(home: string): NodeJS.ProcessEnv {
-  return { ...process.env, HOME: home, CODEX_HOME: join(home, '.codex') }
+export function codexEnv(home: string, environment: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return { ...environment, HOME: home, CODEX_HOME: join(home, '.codex') }
 }
 
 // How the user's own Codex reaches the model, from their config.toml: the
@@ -168,7 +168,8 @@ export function codexEngine(
   bin: () => string | undefined,
   home: string,
   shellEnv: () => Promise<NodeJS.ProcessEnv> = async () => ({}),
-  provider: () => Promise<CodexProvider & { env?: Record<string, string> }> = async () => userCodexProvider()
+  provider: () => Promise<CodexProvider & { env?: Record<string, string> }> = async () => userCodexProvider(),
+  environment: NodeJS.ProcessEnv = process.env
 ): Engine {
   return {
     id: 'codex',
@@ -182,7 +183,7 @@ export function codexEngine(
       const p = await provider()
       const shell = await shellEnv() // read once per launch
       const keys = Object.fromEntries(p.envNames.flatMap((n) => (shell[n] ? [[n, shell[n]]] : [])))
-      yield* runCli({ bin: path, args: codexArgs(turn, p.config), stdin: turn.prompt, cwd: turn.cwd, signal: turn.signal, parser: codexParser(), env: { ...codexEnv(home), ...keys, ...p.env } })
+      yield* runCli({ bin: path, args: codexArgs(turn, p.config), stdin: turn.prompt, cwd: turn.cwd, signal: turn.signal, parser: codexParser(), env: { ...codexEnv(home, environment), ...keys, ...p.env } })
     }
   }
 }

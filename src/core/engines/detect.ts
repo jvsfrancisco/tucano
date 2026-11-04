@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import { access, constants } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { L } from '../../shared/lang'
 import type { EngineId, EngineStatus } from '../../shared/types'
@@ -46,10 +47,10 @@ async function which(cmd: string): Promise<string | undefined> {
 
 const version = (out: string): string | undefined => out.match(/\d+\.\d+\.\d+/)?.[0]
 
-export async function detectClaude(): Promise<EngineStatus> {
+export async function detectClaude(env: NodeJS.ProcessEnv = process.env): Promise<EngineStatus> {
   const path = await which('claude')
   if (!path) return { installed: false, loggedIn: false }
-  const [v, auth] = await Promise.all([run(path, ['--version']), run(path, ['auth', 'status'])])
+  const [v, auth] = await Promise.all([run(path, ['--version'], 15_000, env), run(path, ['auth', 'status'], 15_000, env)])
   let status: Record<string, unknown> = {}
   try {
     status = JSON.parse(auth.stdout) as Record<string, unknown>
@@ -59,7 +60,7 @@ export async function detectClaude(): Promise<EngineStatus> {
   const loggedIn = status['loggedIn'] === true
   const subscription = typeof status['subscriptionType'] === 'string' ? status['subscriptionType'] : undefined
   const viaSubscription = status['authMethod'] === 'claude.ai'
-  const gateway = gatewayHost(userProvider().env['ANTHROPIC_BASE_URL'])
+  const gateway = gatewayHost(userProvider(env['CLAUDE_CONFIG_DIR']).env['ANTHROPIC_BASE_URL'])
   if (gateway) return { installed: true, path, version: version(v.stdout), loggedIn: true, route: 'gateway', gateway, account: L(`Gateway ${gateway} · pelo seu settings.json`, `Gateway ${gateway} · from your settings.json`) }
   return {
     installed: true,
@@ -83,12 +84,12 @@ const gatewayHost = (url: string | undefined): string | undefined => {
 }
 
 // Checks the app's own Codex login (see codexEnv), not the user's.
-export async function detectCodex(home: string): Promise<EngineStatus> {
+export async function detectCodex(home: string, env: NodeJS.ProcessEnv = process.env, configDir?: string): Promise<EngineStatus> {
   const path = await which('codex')
   if (!path) return { installed: false, loggedIn: false }
-  const gateway = gatewayHost(userCodexProvider().baseUrl)
+  const gateway = gatewayHost(userCodexProvider(configDir).baseUrl)
   if (gateway) return { installed: true, path, version: version((await run(path, ['--version'])).stdout), loggedIn: true, route: 'gateway', gateway, account: L(`Gateway ${gateway} · pelo seu config.toml`, `Gateway ${gateway} · from your config.toml`) }
-  const [v, auth] = await Promise.all([run(path, ['--version']), run(path, ['login', 'status'], 15_000, codexEnv(home))])
+  const [v, auth] = await Promise.all([run(path, ['--version'], 15_000, env), run(path, ['login', 'status'], 15_000, codexEnv(home, env))])
   const text = `${auth.stdout}\n${auth.stderr}`
   const loggedIn = auth.code === 0 && /logged in/i.test(text) && !/not logged in/i.test(text)
   const viaChatGpt = /chatgpt/i.test(text)
@@ -150,7 +151,17 @@ export async function detectPi(): Promise<{ status: EngineStatus; models: string
   return { status: listedStatus(path, v.stdout, models, 'pi (e /login)'), models }
 }
 
+// Antigravity CLI (`agy`). Its login lives outside HOME, so the one Google account signed in
+// on this machine is the only one: `agy models` answers only when that login works.
+export async function detectGemini(): Promise<EngineStatus> {
+  const path = await which('agy')
+  if (!path) return { installed: false, loggedIn: false }
+  const [v, models] = await Promise.all([run(path, ['--version']), run(path, ['models'], 20_000)])
+  const loggedIn = models.code === 0 && /\bgemini-/.test(models.stdout)
+  return { installed: true, path, version: version(v.stdout), loggedIn, ...(loggedIn ? { route: 'plan' as const } : {}), account: loggedIn ? L('Conta Google deste computador', "This computer's Google account") : L('Entre no Antigravity (agy)', 'Sign in to Antigravity (agy)') }
+}
+
 export async function detectEngines(codexHome: string): Promise<{ engines: Record<EngineId, EngineStatus>; listed: Partial<Record<EngineId, string[]>> }> {
-  const [claude, codex, opencode, pi] = await Promise.all([detectClaude(), detectCodex(codexHome), detectOpenCode(), detectPi()])
-  return { engines: { claude, codex, opencode: opencode.status, pi: pi.status }, listed: { opencode: opencode.models, pi: pi.models } }
+  const [claude, codex, opencode, pi, gemini] = await Promise.all([detectClaude(), detectCodex(codexHome), detectOpenCode(), detectPi(), detectGemini()])
+  return { engines: { claude, codex, opencode: opencode.status, pi: pi.status, gemini }, listed: { opencode: opencode.models, pi: pi.models } }
 }

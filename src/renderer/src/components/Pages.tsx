@@ -35,6 +35,7 @@ import {
   type TelegramInfo,
   useStore,
   EFFORTS,
+  MODELS,
   ENGINES,
   RUN_BUDGET_PCT,
   RUN_STALL_MINUTES,
@@ -55,6 +56,7 @@ import {
   isTeam
 } from '../store'
 import { HarnessList, HarnessMcps, ModelPicker, onGateway, OutsideGateway } from './Harness'
+import { AiConnectionList } from './AiConnections'
 import { ApprovalCard } from './Conversation'
 import { AgentAvatar, Icon, NumberInput, SleepingToucan, time, tokens, UsageBar } from './ui'
 import { UpdateSettings } from './Update'
@@ -148,6 +150,8 @@ const LEVELS = (): { value: GrantLevel; label: string }[] => [
 export function AgentPage({ id, draft: proposed, fromMessage }: { id?: string; draft?: Agent; fromMessage?: string }): ReactNode {
   const existing = useStore((s) => (id ? agentById(s, id) : undefined))
   const engines = useStore((s) => s.settings.engines)
+  const aiConnections = useStore((s) => s.settings.aiConnections ?? [])
+  const connectionStatuses = useStore((s) => s.settings.connectionStatuses ?? {})
   const connectors = useStore((s) => s.connectors)
   const channels = useStore((s) => s.conversations.filter((c) => c.kind === 'channel'))
   const handles = useStore((s) => s.agents.map((a) => [a.id, a.handle] as const))
@@ -191,7 +195,7 @@ export function AgentPage({ id, draft: proposed, fromMessage }: { id?: string; d
 
   const model = modelInfo(draft.modelId)
   const engine: EngineId = model?.engine ?? 'claude'
-  const engineStatus = engines[engine]
+  const engineStatus = (draft.connectionId ? connectionStatuses[draft.connectionId] : engines[engine]) ?? { installed: false, loggedIn: false }
 
   // A new agent shows everything at once; an existing one, a tab at a time.
   const tab = useTab('agent', AGENT_TABS())
@@ -511,7 +515,19 @@ export function AgentPage({ id, draft: proposed, fromMessage }: { id?: string; d
 
           {pane('perfil') && (
             <Card title={L('Harness e modelo', 'Harness and model')} lead={L('O agente roda num dos harnesses que você usa, como você o configurou: no seu plano, no gateway da empresa ou no seu provedor.', 'The agent runs on one of the harnesses you use, the way you set it up: on your plan, your company’s gateway or your provider.')}>
-              <ModelPicker value={draft.modelId} onChange={(modelId) => patch({ modelId })} />
+              <Field label={L('Conexão de IA', 'AI connection')} hint={L('Escolhe qual conta executa este agente. Canais e memórias continuam no workspace.', 'Chooses which account runs this agent. Channels and memories stay in the workspace.')}>
+                <select value={draft.connectionId ?? ''} onChange={(e) => {
+                  const connectionId = e.target.value || undefined
+                  const connection = aiConnections.find((c) => c.id === connectionId)
+                  const modelId = connection && modelInfo(draft.modelId)?.engine !== connection.engine ? MODELS.find((m) => m.engine === connection.engine)?.id ?? draft.modelId : draft.modelId
+                  patch({ connectionId, modelId })
+                }}>
+                  <option value="">{L('Padrão da instalação', 'Installation default')}</option>
+                  {draft.connectionId && !aiConnections.some((c) => c.id === draft.connectionId) && <option value={draft.connectionId}>{L('Conexão indisponível', 'Unavailable connection')}</option>}
+                  {aiConnections.map((c) => <option key={c.id} value={c.id}>{c.name} · {ENGINES[c.engine].label}</option>)}
+                </select>
+              </Field>
+              <ModelPicker value={draft.modelId} onChange={(modelId) => patch({ modelId })} connectionId={draft.connectionId} />
               {!engineStatus.loggedIn && (
                 <p className="hint hint--warn">
                   <Icon name="lock" size={13} />{' '}
@@ -1521,6 +1537,8 @@ export function SettingsPage(): ReactNode {
             <HarnessList />
           </Card>
         )}
+
+        {pane('modelos') && <Card title={L('Contas de IA por agente', 'AI accounts per agent')}><AiConnectionList /></Card>}
 
         {pane('modelos') && (
           <Card title="Router" lead={L('Modelo pequeno que lê a conversa e decide quem responde. Não concede permissão nenhuma.', 'A small model that reads the conversation and decides who replies. It grants no permissions at all.')}>

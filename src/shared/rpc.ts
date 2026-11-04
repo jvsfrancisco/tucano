@@ -1,5 +1,6 @@
 // The contract between the renderer and the core, carried over a MessagePort.
 import type { Os, Agent, Approval, Artifact, ImageUpload, BrowserView, ComputerInfo, Connector, ConnectorInput, ConnectorTool, HarnessMcp, Conversation, EngineId, Memory, MemoryScope, Message, Routine, RoutineInput, Report, Settings, LocalSkill, Skill, SkillInput, SkillVersion, Trigger, UsageReport } from './types'
+import type { AiConnection, ConnectionEngine } from './types'
 
 export interface Snapshot {
   settings: Settings
@@ -39,7 +40,9 @@ export interface Api {
   settleDraft(p: { messageId: string; agentId?: string }): void // the card is done: created elsewhere (the introduction), or dismissed
   updateSettings(p: { patch: Partial<Omit<Settings, 'engines'>> }): void
   refreshEngines(): void
-  loginEngine(p: { engine: EngineId }): { opened: boolean; command: string } // not opened: no terminal to open, the person runs the command
+  loginEngine(p: { engine: EngineId; connectionId?: string }): { opened: boolean; command: string }
+  addAiConnection(p: { engine: ConnectionEngine; name: string }): AiConnection
+  removeAiConnection(p: { id: string }): void
   addConnector(p: { input: ConnectorInput }): Promise<string>
   removeConnector(p: { id: string }): void
   reconnectConnector(p: { id: string }): void
@@ -65,7 +68,7 @@ export interface Api {
   saveRoutine(p: { routine: RoutineInput }): Routine // throws a message for the form
   setJevKey(p: { key: string | null }): Promise<void> // checks the key with TypeSafe; throws why it's refused
   engineModels(p: { engine: EngineId }): Promise<{ models: string[]; error?: string }> // a harness's own list (OpenCode, Pi, a gateway)
-  testEngine(p: { model: string }): Promise<{ ok: boolean; message: string }> // one real reply through that model
+  testEngine(p: { model: string; connectionId?: string }): Promise<{ ok: boolean; message: string }> // one real reply through that model
   saveSkill(p: { skill: SkillInput }): Skill // throws a message for the form
   localSkills(): LocalSkill[] // the skills of the user's Claude Code, its plugins and Codex
   linkSkill(p: { source: string; agents: string[] }): Skill
