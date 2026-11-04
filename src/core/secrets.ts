@@ -3,6 +3,7 @@
 // Electron's safeStorage, so the core asks it over the parent port.
 import { randomUUID } from 'node:crypto'
 import type { Db } from './db'
+import type { Parent } from './host'
 
 export interface Cipher {
   encrypt(plain: string): Promise<string>
@@ -17,7 +18,7 @@ export const plainCipher: Cipher = {
 
 type Reply = { type: 'secret-result'; id: string; data?: string; error?: string }
 
-export function mainCipher(port: Electron.ParentPort): Cipher {
+export function mainCipher(port: Parent): Cipher {
   const pending = new Map<string, { resolve: (v: string) => void; reject: (e: Error) => void }>()
   port.on('message', (e) => {
     const r = e.data as Reply | undefined

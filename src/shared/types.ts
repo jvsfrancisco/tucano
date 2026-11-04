@@ -507,7 +507,9 @@ export const IMAGE_MIMES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024 // what the models take per image
 export const MAX_IMAGES_PER_MESSAGE = 10
 
-export const artifactUrl = (a: Pick<Artifact, 'id' | 'name'>): string => `tucano://artifact/${a.id}/${encodeURIComponent(a.name)}`
+// The app serves them from its own scheme; in a browser (the server) from the page's own address.
+const inBrowser = (): boolean => typeof location !== 'undefined' && /^https?:$/.test(location.protocol)
+export const artifactUrl = (a: Pick<Artifact, 'id' | 'name'>): string => `${inBrowser() ? '/artifact' : 'tucano://artifact'}/${a.id}/${encodeURIComponent(a.name)}`
 
 // ---------- routines (spec §14) ----------
 

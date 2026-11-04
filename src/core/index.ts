@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import type { MessagePortMain } from 'electron'
+import { parent, type Port } from './host'
 import { L, langOf, locale, setLang, type Lang } from '../shared/lang'
 import type { Api, CoreEvent, Method, Request, Wire } from '../shared/rpc'
 import { channelName, ENGINES, inQuietHours, modelInfo, WEBHOOK_PORT, type Agent, type BrowserReply, type Message, type EngineId, type EngineStatus, type Settings } from '../shared/types'
@@ -160,7 +160,7 @@ const gatewayLists = new Map<EngineId, Promise<{ models: string[]; error?: strin
 
 // ---------- ports ----------
 
-const ports = new Set<MessagePortMain>()
+const ports = new Set<Port>()
 function emit(event: CoreEvent): void {
   const wire: Wire = { event }
   for (const p of ports) p.postMessage(wire)
@@ -198,8 +198,7 @@ type ToMain =
   | { type: 'login_item'; open: boolean }
   | { type: 'busy'; busy: boolean }
   | { type: 'lang'; lang: Lang }
-const toMain = (msg: ToMain): void =>
-  process.parentPort.postMessage(msg)
+const toMain = (msg: ToMain): void => parent.postMessage(msg)
 // The menu is the main process's: it follows the language picked here.
 toMain({ type: 'lang', lang: db.getSettings(DEFAULTS).language })
 
@@ -207,7 +206,7 @@ toMain({ type: 'lang', lang: db.getSettings(DEFAULTS).language })
 const shots = new Map<string, { resolve: (b: Buffer) => void; reject: (e: Error) => void }>()
 // Agents' browsers too (spec §24).
 const pages = new Map<string, { resolve: (r: BrowserReply) => void; reject: (e: Error) => void }>()
-process.parentPort.on('message', (e) => {
+parent.on('message', (e) => {
   const r = e.data as { type?: string; id: string; data?: unknown; error?: string; awake?: boolean; agentId?: string; shown?: boolean } | undefined
   if (r?.type === 'power') return routines.setAwake(r.awake === true)
   if (r?.type === 'browser-shown') return browser.setShown(r.agentId ?? '', r.shown === true)
@@ -228,14 +227,14 @@ const shoot: Shooter = (opts) =>
   new Promise((resolve, reject) => {
     const id = randomUUID()
     shots.set(id, { resolve, reject })
-    process.parentPort.postMessage({ type: 'screenshot', id, ...opts })
+    parent.postMessage({ type: 'screenshot', id, ...opts })
   })
 
 const electronHost: BrowserHost = (agentId, op, args) =>
   new Promise((resolve, reject) => {
     const id = randomUUID()
     pages.set(id, { resolve, reject })
-    process.parentPort.postMessage({ type: 'browser', id, agentId, op, args })
+    parent.postMessage({ type: 'browser', id, agentId, op, args })
     setTimeout(() => pages.get(id) && (pages.delete(id), reject(new Error(L('o navegador não respondeu em 60 s', "the browser didn't answer in 60 s")))), 60_000).unref()
   })
 // Google Chrome when the Mac has it (Google refuses logins in embedded browsers); Electron's Chromium otherwise.
@@ -250,7 +249,7 @@ const chrome =
     : undefined
 const host: BrowserHost = chrome ? (agentId, op, args) => chrome.run(agentId, op, args) : electronHost
 
-const secrets = new Secrets(db, fake ? plainCipher : mainCipher(process.parentPort))
+const secrets = new Secrets(db, fake ? plainCipher : mainCipher(parent))
 const browser = new Browser({
   host,
   db,
@@ -810,7 +809,7 @@ const api: Api = {
   }
 }
 
-function handle(port: MessagePortMain, req: Request): void {
+function handle(port: Port, req: Request): void {
   const reply = (r: Omit<Extract<Wire, { id: number }>, 'id'>): void => port.postMessage({ id: req.id, ...r } satisfies Wire)
   const fn = api[req.method as Method] as ((p: unknown) => unknown) | undefined
   if (!fn) return reply({ error: `unknown method ${req.method}` })
@@ -825,7 +824,7 @@ function handle(port: MessagePortMain, req: Request): void {
     )
 }
 
-process.parentPort.on('message', (e) => {
+parent.on('message', (e) => {
   const port = e.ports[0]
   if (!port) return
   ports.add(port)

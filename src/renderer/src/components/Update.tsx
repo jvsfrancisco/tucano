@@ -19,7 +19,7 @@ function watch(): void {
     listeners.forEach((l) => l())
   }
   void window.tucano.updateState().then(set)
-  window.tucano.onUpdate(set)
+  window.tucano.onUpdate?.(set)
 }
 
 function useUpdate(): UpdateState | null {
@@ -46,7 +46,7 @@ export function UpdateNote(): ReactNode {
           {L('O que mudou', 'What’s new')}
         </a>
       </div>
-      <button className="btn btn--primary btn--sm" onClick={() => window.tucano.installUpdate()}>
+      <button className="btn btn--primary btn--sm" onClick={() => window.tucano.installUpdate?.()}>
         {L('Reiniciar', 'Restart')}
       </button>
     </div>
@@ -84,11 +84,11 @@ export function UpdateSettings(): ReactNode {
       </span>
       <div className="row">
         {u.status === 'ready' ? (
-          <button className="btn btn--primary btn--sm" onClick={() => window.tucano.installUpdate()}>
+          <button className="btn btn--primary btn--sm" onClick={() => window.tucano.installUpdate?.()}>
             {L('Reiniciar e atualizar', 'Restart and update')}
           </button>
         ) : (
-          <button className="btn btn--sm" disabled={u.status === 'off' || busy} onClick={() => window.tucano.checkUpdates()}>
+          <button className="btn btn--sm" disabled={u.status === 'off' || busy} onClick={() => window.tucano.checkUpdates?.()}>
             {L('Procurar atualizações', 'Check for updates')}
           </button>
         )}

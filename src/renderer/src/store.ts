@@ -35,7 +35,7 @@ import {
   type ImageUpload,
   type Os
 } from '../../shared/types'
-import { call, connect } from './rpc'
+import { call, connect, installWebHost, onReconnect } from './rpc'
 
 export * from '../../shared/types'
 
@@ -244,6 +244,7 @@ function apply(e: CoreEvent): void {
 }
 
 export async function start(): Promise<void> {
+  installWebHost()
   window.tucano.onNavigate((id) => navigate({ kind: 'conversation', id }))
   let viewing: string | null = null
   subscribe(() => {
@@ -251,6 +252,12 @@ export async function start(): Promise<void> {
     if (id !== viewing) window.tucano.viewing((viewing = id))
   })
   await connect(apply)
+  // After a dropped connection (web) events were missed: read everything again.
+  onReconnect(() => void load())
+  await load()
+}
+
+async function load(): Promise<void> {
   const snap = await call('snapshot')
   set((s) => {
     const first = snap.conversations.find((c) => c.kind === 'channel') ?? snap.conversations[0]
