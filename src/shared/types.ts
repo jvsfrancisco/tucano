@@ -318,9 +318,15 @@ export const MODELS: Model[] = [
   model('sonnet', 'claude', 'Sonnet', 'Bom pra maioria', 'Good for most things'),
   model('opus', 'claude', 'Opus', 'Tarefas longas e difíceis', 'Long, hard tasks'),
   model('haiku', 'claude', 'Haiku', 'Rápido, gasta pouco do plano', 'Fast, uses little of the plan'),
-  model('gpt-5.6-luna', 'codex', 'GPT-5.6 Luna', 'Bom pra maioria', 'Good for most things'),
-  model('gpt-5.6-terra', 'codex', 'GPT-5.6 Terra', 'Problemas difíceis', 'Hard problems'),
-  model('gpt-5.6-sol', 'codex', 'GPT-5.6 Sol', 'O mais capaz, mais lento', 'The most capable, slower'),
+  // Codex's own catalog (`codex debug models`). The 5.6 ones stay so existing agents keep working.
+  model('gpt-6.1-sol', 'codex', 'GPT-6.1 Sol', 'Bom pra maioria, o mais novo', 'Good for most things, the newest'),
+  model('gpt-6-astra', 'codex', 'GPT-6 Astra', 'O mais capaz, pro trabalho mais difícil', 'The most capable, for the hardest work'),
+  model('gpt-6.1-terra', 'codex', 'GPT-6.1 Terra', 'Equilibrado', 'Balanced'),
+  model('gpt-6-sol', 'codex', 'GPT-6 Sol', 'Geração anterior', 'Previous generation'),
+  model('gpt-6-luna', 'codex', 'GPT-6 Luna', 'Rápido e barato', 'Fast and affordable'),
+  model('gpt-5.6-sol', 'codex', 'GPT-5.6 Sol', 'Antigo', 'Older'),
+  model('gpt-5.6-terra', 'codex', 'GPT-5.6 Terra', 'Antigo', 'Older'),
+  model('gpt-5.6-luna', 'codex', 'GPT-5.6 Luna', 'Antigo, rápido', 'Older, fast'),
   model('gemini-3.8-flash-medium', 'gemini', 'Gemini 3.8 Flash', 'Rápido', 'Fast'),
   model('gemini-4-argon-high', 'gemini', 'Gemini 4 Argon', 'Tarefas complexas', 'Complex tasks')
 ]

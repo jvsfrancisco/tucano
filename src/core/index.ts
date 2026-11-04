@@ -436,7 +436,7 @@ function ensureTuca(modelId?: string, fresh = false): { agentId: string; convers
     emit({ type: 'agent', agent: tuca })
   }
   if (!tuca) {
-    const model = [modelId, 'sonnet', 'gpt-5.6-luna', s.routerModel, s.memoryModel, availableModels(s, listed)[0]?.id].find((id): id is string => !!id && id !== 'jev' && works(id))
+    const model = [modelId, 'sonnet', 'gpt-6-luna', s.routerModel, s.memoryModel, availableModels(s, listed)[0]?.id].find((id): id is string => !!id && id !== 'jev' && works(id))
     tuca = tucaAgent(model ?? 'sonnet', db.agents().map((a) => a.handle), s.defaultLimit)
     db.saveAgent(tuca)
     emit({ type: 'agent', agent: tuca })

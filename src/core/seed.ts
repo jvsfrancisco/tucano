@@ -25,7 +25,7 @@ export function seed(db: Db): void {
     role: L('Dados', 'Data'),
     color: 'violet',
     instructions: L('Responde perguntas sobre métricas, SQL e análise de dados. Mostra a query ou a conta que usou.', 'Answers questions about metrics, SQL and data analysis. Shows the query or the math it used.'),
-    modelId: 'gpt-5.6-luna',
+    modelId: 'gpt-6-luna',
     effort: 'medium',
     limit: 2_000_000
   })
